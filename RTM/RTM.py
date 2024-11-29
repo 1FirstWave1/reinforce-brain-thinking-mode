@@ -1,8 +1,4 @@
-#active设置有问题需改动
-#提取的提示词也单独放一个文件中
-#extract_information
-#association问题
-#602行报错
+#todo: change it to env and agent seperately
 import re
 import json
 import time
@@ -12,7 +8,6 @@ from langchain.prompts import ChatPromptTemplate
 from langchain_core.messages import AnyMessage, SystemMessage, HumanMessage, ToolMessage
 import networkx as nx
 from random import choice, randrange
-#这种实现全部import出来是不是不太优雅
 from sys2 import prompts
 from sys2 import extract_prompts
 import os
@@ -21,7 +16,7 @@ from langchain.output_parsers import ResponseSchema
 from langchain.output_parsers import StructuredOutputParser
 from langchain.output_parsers import OutputFixingParser
 import numpy as np
-
+#change the way show the graph
 COLORMAP = {
     "root": "yellow",
     "regeneration": "green",
@@ -39,13 +34,16 @@ REVERSE_COLORMAP = {
     "red": "information"
 }
 
-
-#唯一问题graph没办法动态生成，只能暂时用networkx
-class sys2Agent:
-    #G都得改成self.G
+class RTMEnv:
     def __init__(self, chat, output):
-        self.chat = chat
-        #输出路径
+        pass
+    def env():
+        pass
+
+#Will it receive RTMEnv while testing? 
+class RTMplanner:
+    def __init__(self, planner, output):
+        self.chat = planner
         self.output = output
         self.sys_template = ChatPromptTemplate.from_messages(
             [("system", prompts.SYS_PROMPTS)]
@@ -60,7 +58,7 @@ class sys2Agent:
         #生成本轮最初信息
         self.sys_msg = self.sys_template.invoke({"text": data})
         self.G.add_node(
-            "root",
+            "answer",
             subtype=None,
             content=self.sys_msg,
             record=None,
@@ -71,7 +69,17 @@ class sys2Agent:
         )
         self.answer = None
         state = "overall", "TASK_RECOGNITION", ["root"], {"regeneration": False}
-        return state, self.terminate
+        return state, self.terminate    
+
+class RTMactor:
+    pass
+
+
+
+class RTMAgent:
+
+
+
 
     def policy(self, state):
         type, subtype, index_list, kwargs = state
@@ -163,24 +171,6 @@ class sys2Agent:
                 state = self.confidence_redirect(confidence, cur_index, state)
                 return state, self.terminate
 
-        # elif subtype == "FIRST_STEP":
-        #     pre_index = index_list[0]
-        #     record = self.gain_record(subtype, index, kwargs)
-        #     node = self.extract_information(record, ["the solution of step1"], ["the solution of step1"])
-        #     index = "root"
-        #     count = self.count_node(subtype.lower())
-        #     index = self.draw_graph(f"{count}{subtype.lower()}", subtype, node, record, [index], subtype)
-
-        #     confidence = self.confidence_metrics(record)
-        #     if confidence:
-        #         state = "decompose", "STEP", [index], {"i": 1, "regeneration":False}
-        #         return state, self.terminate
-        #     else:
-        #         next_type, next_task, next_task_kwargs = self.not_sure_method(index)
-        #         next_task_kwargs["regeneration"] = False
-        #         state = next_type, next_task, [index], next_task_kwargs
-        #         return state, self.terminate
-
         elif subtype == "STEP":
             pre_index = index_list[0]
             regeneration = False
@@ -222,40 +212,6 @@ class sys2Agent:
                 next_task_kwargs["i"] = i + 1
                 state = next_type, next_task, [cur_index], next_task_kwargs
                 return state, self.terminate
-
-        # elif subtype == "DECOMPOSE_ITEM":
-        #     #该方法禁调用not_sure_method
-        #     pre_index = index_list[0]
-        #     record = self.gain_record(subtype, index, kwargs)
-        #     #这样写不好，直接改成用符号分割，正则表达式匹配吧。。。。
-        #     num_dict = self.extract_information(record, ["number_item"], [
-        #         "Based on the answer, how many items are decomposed? Just give a number."])
-        #     number_item = int(num_dict["number_item"])
-        #     objects = [f'item{i}' for i in range(number_item)]
-        #     descriptions = [f'what should we do in the step{i}' for i in range(number_item)]
-        #     steps = self.extract_information(record, objects, descriptions)
-        #     # 字典的更新
-        #     node = self.extract_information(record, ["important_item"],
-        #                                     ["What is the most important item in this question?"])
-        #     node.update(steps)
-        #     count = self.count_node(subtype.lower())
-        #     center_index = index
-        #     index = self.draw_graph(f"{count}{subtype.lower()}",
-        #                             subtype, node, record, [index],
-        #                             subtype, active=center_index)
-
-        #     # 生成这些点并判断激活程度
-        #     for key, value in steps:
-        #         node = {key: value}
-        #         count = self.count_node(subtype.lower())
-        #         current_index = self.draw_graph(f"{count}{subtype.lower()}", subtype, node, record, [index],
-        #                                         subtype,
-        #                                         active=[center_index])
-
-        #     subtype = self.G.nodes[index_list[0]]["subtype"]
-        #     type = self.gain_type(subtype)
-        #     state = type, subtype, [index_list[0]], {"regeneration": True}
-        #     return state, self.terminate
 
     #下面很多内容未设置"regeneration"参数，同时返回原任务所需kwargs缺失
     def policy_association(self, subtype, index_list, kwargs):
@@ -299,17 +255,6 @@ class sys2Agent:
             state = self.confidence_redirect(confidence, cur_index, state, center_index=pre_index)
             # 生成辅助信息返回
             return state, self.terminate
-            # #根据相似事物生成新的原节点答案 
-            # type ,subtype = self.node_type(G[index])
-            # record = self.send_and_record(subtype,node)
-            # answer1 = G[index]["content"]
-            # answer2 = record["reply"]
-            # kwargs = {"answer1":answer1,"answer2":answer2}
-            # #获得两个答案的区别
-            # differences = self.policy_compare("DIFFERENCE_ANSWER",index,G,kwargs)
-            # #选择答案
-            # better_answer,reason = self.policy_compare("CHOOSE_ANSWER",index,G,differences)
-            # G[index]["content"] = better_answer
         elif subtype == "SIMILAR_PROBLEM":
             pre_index = index_list[0]
             record = self.gain_record(subtype, pre_index, kwargs)
@@ -712,7 +657,6 @@ class sys2Agent:
         else:
             additional_msg = self.create_tips()
         if kwargs:
-            #暂时这么写吧,但愿不报错
             subtype_template = ChatPromptTemplate.from_messages([("human", getattr(prompts, subtype))])
             subtype_temp_msg = subtype_template.invoke(kwargs)
             subtype_temp_msg = subtype_temp_msg.messages
@@ -776,11 +720,4 @@ class sys2Agent:
                     f.write("AI" + msg + "\n")
         return
 
-#目前任务：
-#colormap（更高级的属性）的属性
-
-#探索（反复提问获得新信息，方法）与回顾（已知信息的关联再挖掘，错误信息的平反或删除）的平衡
-#任务的不断细化以及总结
-#分成细碎的点，因为每个点都有可能继续向外延申
-#多线程同时进行，减少生成时间
 

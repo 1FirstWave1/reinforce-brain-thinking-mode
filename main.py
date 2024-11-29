@@ -74,7 +74,6 @@ def main(args):
 
     metrics = BaseMetrics(**vars(args))
     only_agent = ["base", "cot", "3-shot"]
-    agent_env = ["RTM"]
     #only agent
     if args.agent in only_agent:
         for idx, data in dataset:
@@ -97,8 +96,8 @@ def main(args):
                 except Exception as e:
                     print("Program terminated abnormally!")
                     terminate = True
-    #agent and env
-    if args.agent in agent_env:
+
+    elif args.agent == "RTM":
         for idx, data in tqdm(dataset):
             del idx
             state, terminate = env.reset(data)

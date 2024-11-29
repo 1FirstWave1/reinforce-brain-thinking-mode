@@ -18,11 +18,11 @@ def compute_answer_callback(final_answer, data, dataset_name, chat):
     #抽取出模型所给出的答案
     if isinstance(final_answer, dict) and 'reply' in final_answer:
         final_answer = final_answer['reply']
-    answer_default = extract_pred_answer(
+    answer_generated = extract_pred_answer(
         dataset_name, data, final_answer, chat 
     )    
     data.update(
-        {"answer_default": answer_default,"final_answer": final_answer}
+        {"answer_generated": answer_generated,"final_answer": final_answer}
     )
     return data
 def save_data(data, path):
@@ -158,7 +158,7 @@ def str2num(answer_str, rounding="int", abs_val=True):
     return answer_str
 
 
-#比较答案，应该是一些数据集特殊才会暂时写成这样（多选题）
+
 def compare_results(answers, final_answer):
     #比较两个答案是否相等
     def compare(answer, final_answer):
@@ -171,10 +171,8 @@ def compare_results(answers, final_answer):
                 logger.error(f"Exception: {e}\n Answer is {answer}")
                 correctness = f"{answer}".strip() == f"{final_answer}".strip()
         return correctness
-    #answer不是列表变成列表再调用
     if not isinstance(answers, list):
         return compare_results([answers], final_answer)[0]
-    #原答案为列表，逐个跟final_answer比较？
     ret = [compare(answer, final_answer) for answer in answers]
     return ret
 
@@ -186,7 +184,6 @@ class BaseMetrics:
         self._correctnesses = []
         self.use_wandb = kwargs["use_wandb"]
         if self.use_wandb:
-            #进行实验跟踪
             wandb.init(
                 project="brain_net",
                 # Track hyperparameters and run metadata
@@ -199,7 +196,7 @@ class BaseMetrics:
     @property
     def acc(self):
         return self.correctnesses.mean(axis=0)
-    #返回字典，包含索引和acc
+
     @property
     def reports(self):
         reports = {
@@ -207,18 +204,17 @@ class BaseMetrics:
             "acc": self.acc,
         }
         return reports
-    #对数据进行更新
+
     def update(self, data):
         idx = data["idx"]
         self._idxs.append(idx)
-        #answer是真答案
         logger.debug(data)
-        answer_default, answer = (
-            data["answer_default"],
+        answer_generated, answer = (
+            data["answer_generated"],
             data["answer"],
         )
-        #布尔值
-        correctness = compare_results(answers=answer_default, final_answer=answer)
+        #bool
+        correctness = compare_results(answers=answer_generated, final_answer=answer)
         self._correctnesses.append(correctness)
         self._data = data
         return
@@ -227,6 +223,77 @@ class BaseMetrics:
         if self.use_wandb:
             reports = self.reports
             wandb.log(reports)
-        #记录debug级别信息
         logger.debug(self.reports)
+        return
+
+#todo:load baseline data to compare
+class Metrics(BaseMetrics):
+    def __init__(self, **kwargs) -> None:
+        self.rec = re.compile(r"T\[(\d+), (\d+)\]")
+        self._final_steps = []
+        self._final_layer = []
+        self._default_steps = []
+        super().__init__(**kwargs)
+
+    @property
+    def improve_rate(self):
+        c = self.correctnesses
+        # #[0,1]/#[0,*]
+        cF = c[c[:, 0] == False]
+        if len(cF) > 0:
+            return cF[:, 1].mean()
+        return -1
+
+    @property
+    def worse_rate(self):
+        c = self.correctnesses
+        # #[1,0]/#[1,*]
+        cF = c[c[:, 0] == True]
+        if len(cF) > 0:
+            return (~cF[:, 1]).mean()
+        return -1
+
+    @property
+    def reports(self):
+        reports = {
+            "idx": self._data["idx"],
+            "acc_default": self.acc[0],
+            "acc_logi": self.acc[1],
+            "improve rate": self.improve_rate,
+            "worse rate": self.worse_rate,
+            "T_default": int(self._correctnesses[-1][0]),
+            "T_logi": int(self._correctnesses[-1][1]),
+            "steps_default": np.array(self._default_steps).mean(),
+            "steps_logi": np.array(self._final_steps).mean(),
+            "layers_logi": np.array(self._final_layer).mean(),
+        }
+        return reports
+
+    def update(self, data):
+        idx = data["idx"]
+        self._idxs.append(idx)
+        answer_default, answer_logi, answer = (
+            data["answer_default"],
+            data["answer_logi"],
+            data["answer"],
+        )
+        correctness = compare_results(
+            answers=[answer_default, answer_logi], final_answer=answer
+        )
+        self._correctnesses.append(correctness)
+
+        # counting steps
+        nodes = data["G"]["nodes"]
+        steps = defaultdict(list)
+        for node in nodes:
+            nid = node["id"]
+            match = self.rec.search(nid)
+            m, n = int(match[1]), int(match[2])
+            steps[m].append(n)
+        default_layer, final_layer = min(steps.keys()), max(steps.keys())
+        default_steps, final_steps = max(steps[default_layer]), max(steps[final_layer])
+        self._final_layer.append(final_layer)
+        self._default_steps.append(default_steps)
+        self._final_steps.append(final_steps)
+        self._data = data
         return
