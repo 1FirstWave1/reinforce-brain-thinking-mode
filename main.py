@@ -1,6 +1,7 @@
 #reinforce_thinking_mode
 #used for final test(not train)
 #RTM and other baselines
+import openai
 import argparse
 import os
 from tqdm import tqdm
@@ -8,7 +9,7 @@ from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from RTM.utils import gain_path
 from RTM.load_data import DATASETS
-from RTM.model_test1 import sys2Agent
+from RTM.RTM import RTMEnv, RTMAgent
 from baselines.easy_baselines import baseAgent, cotAgent, shotAgent
 from RTM.output import compute_answer_callback, BaseMetrics, save_data
 
@@ -35,7 +36,7 @@ parser.add_argument("--use_wandb")
 
 def main(args):
     Dataset = DATASETS[args.dataset_name]
-    input_path, out_path = gain_path(args.agent, args.dataset_name)
+    input_path, output_path = gain_path(args.agent, args.dataset_name)
     dataset = Dataset(data_path=input_path)    
     actor_llm = ChatOpenAI(
         model_name=args.model_name,
@@ -44,29 +45,29 @@ def main(args):
     )
     if args.agent == "RTM":
         env = RTMEnv(
-            chat=chat,
+            chat=actor_llm,
             input=input_path,
         )
         agent = RTMAgent(
             chat=actor_llm,
-            output=out_path,
+            output=output_path,
         )
 
     elif args.agent == "base":
         agent = baseAgent(
             chat=actor_llm,
-            output=out_path,
+            output=output_path,
         )
     elif args.agent == "cot":    
         agent = cotAgent(
             chat=actor_llm,
-            output=out_path,
+            output=output_path,
         )
     elif args.agent == "3-shot":
         
         agent = shotAgent(
             chat=actor_llm,
-            output=out_path,
+            output=output_path,
             dataset_name=args.dataset_name,
             number_shots=3,
         )        
@@ -84,7 +85,7 @@ def main(args):
                     if state == "reload":
                         data = agent.data
                     else:
-                        data = compute_answer_callback(agent.answer, agent.data, args.dataset_name,chat)          
+                        data = compute_answer_callback(agent.answer, agent.data, args.dataset_name, actor_llm)          
                         path = os.path.join(args.output, "output_dev.jsonl")
                         save_data(data, path)
 

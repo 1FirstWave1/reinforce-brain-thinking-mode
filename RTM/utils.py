@@ -6,8 +6,8 @@ def gain_path(agent, dataset):
     #todo: Add other datasets' path
     
    
-    out_path = os.path.join("data", dataset)
-    out_path = os.path.join(out_path, "result")
-    out_path = os.path.join(out_path, agent)
+    output_path = os.path.join("data", dataset)
+    output_path = os.path.join(output_path, "result")
+    output_path = os.path.join(output_path, agent)
 
     return input_path, output_path

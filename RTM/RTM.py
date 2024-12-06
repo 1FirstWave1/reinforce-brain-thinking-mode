@@ -1,4 +1,6 @@
 #todo: change it to env and agent seperately
+#todo: add logs
+#todo: add comments for functions 
 import re
 import json
 import time
@@ -8,8 +10,8 @@ from langchain.prompts import ChatPromptTemplate
 from langchain_core.messages import AnyMessage, SystemMessage, HumanMessage, ToolMessage
 import networkx as nx
 from random import choice, randrange
-from sys2 import prompts
-from sys2 import extract_prompts
+from RTM import prompts
+from RTM import extract_prompts
 import os
 import matplotlib.pyplot as plt
 from langchain.output_parsers import ResponseSchema
@@ -42,7 +44,7 @@ class RTMEnv:
 
 #Will it receive RTMEnv while testing? 
 class RTMplanner:
-    def __init__(self, planner, output):
+    def __init__(self, data, planner, output):
         self.chat = planner
         self.output = output
         self.sys_template = ChatPromptTemplate.from_messages(
@@ -71,21 +73,50 @@ class RTMplanner:
         state = "overall", "TASK_RECOGNITION", ["root"], {"regeneration": False}
         return state, self.terminate    
 
+    def choose_policy(self, list):
+        '''选择一个方案
+            输入：一个包含各种策略的列表
+            输出：给定的某个策略'''
+        pass
+
+    def parser(self):
+        pass
+
+    def back_to_top(self, index):
+        subtype = self.G.nodes[index]["subtype"]
+        type = self.gain_type(subtype)
+        back_dict = self.G.nodes[index]["kwargs"]
+        back_dict["regeneration"] = True
+        state = type, subtype, [index], back_dict
+        return state
+
+    def gain_type(self, subtype):
+        overall = ["ANSWER", "TASK_RECOGNITION", "TASK_DIFFICULTY"]
+        decompose = ["DECOMPOSE_TASK", "STEP"]
+        association = ["ASSOCIATION", "SIMILAR_PROBLEM"]
+        compare = ["COMPARE", "COMPARE_ORDINARY", "DIFFERENCE_IMPACT", "DIFFERENCE_ANSWER", "CHOOSE_ANSWER"]
+        importance = ["IMPORTANCE", "CONDENSE_TEXT", "UNIMPORTANT_POINT"]
+        inference = ["REASON", "DEFINE", "RESULT", "COUNTER_FACTUAL1", "COUNTER_FACTUAL2"]
+        if subtype in overall:
+            return "overall"
+        elif subtype in decompose:
+            return "decompose"
+        elif subtype in association:
+            return "association"
+        elif subtype in compare:
+            return "compare"
+        elif subtype in importance:
+            return "importance"
+        elif subtype in inference:
+            return "inference"
+
 class RTMactor:
-    pass
-
-
-
-class RTMAgent:
-
-
-
+    def __init__(self, actor, ):
+        pass
 
     def policy(self, state):
         type, subtype, index_list, kwargs = state
-        if type == "overall":
-            return self.policy_overall(subtype, index_list, kwargs)
-        elif type == "decompose":
+        if type == "decompose":
             return self.policy_decompose(subtype, index_list, kwargs)
         elif type == "reflection":
             return self.policy_reflection(subtype, index_list, kwargs)
@@ -98,46 +129,30 @@ class RTMAgent:
         elif type == "inference":
             return self.policy_inference(subtype, index_list, kwargs)
         elif type == "difficulty":
-            return self.policy_difficulty(subtype, index_list, kwargs)
+            return self.policy_difficulty(subtype, index_list, kwargs)  
+        elif type == "answer":
+            return self.policy_answer(subtype, index_list, kwargs)        
 
-    def policy_overall(self, subtype, index_list, kwargs):
-        if subtype == "TASK_RECOGNITION":
-            pre_index = index_list[0]
-            regeneration = False
-            if 'regeneration' in kwargs:
-                regeneration = kwargs['regeneration']
-            record = self.gain_record(subtype, pre_index, kwargs)
-            confidence = self.confidence_metrics(record, ["root"])
-            #提取分类结果
-            node = self.extract_information(record, ["type of task"], ["Based on the reply, specify the type of task."])
-            cur_index = self.deal_node_generation(regeneration, subtype, node, record, index_list, kwargs, confidence)
-            state = "decompose", "DECOMPOSE_TASK", ["root"], {"problem": self.G.nodes["root"]["content"], "regeneration": False}
-            state = self.confidence_redirect(confidence, cur_index, state)
-            return state, self.terminate
-        #得到最终回答！ 
-        elif subtype == "ANSWER":
-            pre_index = index_list[0]
-            record = self.gain_record(subtype, pre_index, kwargs)
-            node = self.extract_information(record, ["final_answer"], ["Extract the final answer.Note that you only need to extract the final answer, no additional information is required"])
-            pre_index = "root"
-            count = self.count_node(subtype.lower())
-            node_info = subtype, node, record, [pre_index], subtype, kwargs, None
-            cur_index = self.draw_graph(f"{count}{subtype.lower()}", node_info)
-            colors = nx.get_node_attributes(self.G, 'color').values()
-            nx.draw(self.G, with_labels=True, node_color=colors)
-            path_1 = os.path.join(self.output,
-                                  time.strftime("graph_%Y_%m_%d_%H_%M_%S.png", time.localtime(time.time())))
-            plt.savefig(path_1)
-            path_2 = os.path.join(self.output,
-                                  time.strftime("test_txt_%Y_%m_%d_%H_%M_%S.txt", time.localtime(time.time())))
-            with open(path_2, "w") as f:
-                for msg in self.MSG:
-                    f.write(msg + "\n")
-            state = None
-            self.terminate = True
-            self.answer = node["final_answer"]
-            return state, self.terminate
-
+    def policy_answer(self, subtype, index_list, kwargs, regen):
+        record = self.gain_record(subtype, pre_index, kwargs, regen)
+        count = self.count_node(subtype.lower())
+        node_info = subtype, record, [pre_index], subtype, kwargs, None
+        cur_index = self.draw_graph(f"{count}{subtype.lower()}", node_info)
+        colors = nx.get_node_attributes(self.G, 'color').values()
+        nx.draw(self.G, with_labels=True, node_color=colors)
+        path_1 = os.path.join(self.output,
+                                time.strftime("graph_%Y_%m_%d_%H_%M_%S.png", time.localtime(time.time())))
+        plt.savefig(path_1)
+        path_2 = os.path.join(self.output,
+                                time.strftime("test_txt_%Y_%m_%d_%H_%M_%S.txt", time.localtime(time.time())))
+        with open(path_2, "w") as f:
+            for msg in self.MSG:
+                f.write(msg + "\n")
+        state = None
+        self.terminate = True
+        self.answer = record['reply']
+        return state, self.terminate 
+    
     #kwargs作为prompt的参数，也不一定非要在上一层指定的感觉，只是传递一个信息吧。。。。
     def policy_decompose(self, subtype, index_list, kwargs):
         if subtype == "DECOMPOSE_TASK":
@@ -213,7 +228,6 @@ class RTMAgent:
                 state = next_type, next_task, [cur_index], next_task_kwargs
                 return state, self.terminate
 
-    #下面很多内容未设置"regeneration"参数，同时返回原任务所需kwargs缺失
     def policy_association(self, subtype, index_list, kwargs):
         regeneration = False
         if 'regeneration' in kwargs:
@@ -273,7 +287,6 @@ class RTMAgent:
             regeneration = kwargs['regeneration']
         if subtype == "COMPARE":
             # 暂定为两件事
-            # TODO: expecting two things in kwargs
             pre_index = index_list[0]
             record = self.gain_record(subtype, pre_index, kwargs)
             confidence = self.confidence_metrics(record, index_list)
@@ -415,8 +428,7 @@ class RTMAgent:
             return state, self.terminate
         elif subtype == "DEFINE":
             ''''获得对应事物的定义并与其相连
-                输入:thing(需要定义的事物)
-                输出:跳转到提问节点'''
+                输入:thing(需要定义的事物)'''
             pre_index = index_list[0]
             record = self.gain_record(subtype, pre_index, kwargs)
             confidence = self.confidence_metrics(record, index_list)
@@ -427,8 +439,7 @@ class RTMAgent:
             return state, self.terminate
         elif subtype == "RESULT":
             '''获得对应事物的结果并与其相连(当然感觉结果和影响可以分成两个策略来使用)
-                输入：thing（需被探究造成结果的概念）
-                输出：跳转到提问节点 '''
+                输入：thing（需被探究造成结果的概念）'''
             pre_index = index_list[0]
             record = self.gain_record(subtype, pre_index, kwargs)
             confidence = self.confidence_metrics(record, index_list)
@@ -441,8 +452,7 @@ class RTMAgent:
             #反事实：若不发生会产生怎样的结果
         elif subtype == "COUNTER_FACTUAL1" or "COUNTER_FACTUAL2":
             ''' 某一因素相反或不存在对结果的影响
-                输入：thing（影响），result原本结果
-                输出：跳转到提问节点 '''
+                输入：thing（影响），result原本结果 '''
             pre_index = index_list[0]
             record = self.gain_record(subtype, pre_index, kwargs)
             confidence = self.confidence_metrics(record, index_list)
@@ -451,27 +461,6 @@ class RTMAgent:
             state = self.back_to_top(pre_index)
             state = self.confidence_redirect(confidence, cur_index, state)
             return state, self.terminate
-
-    def confidence_metrics(self, record, active):
-        i = 0
-        if active:
-            while active[0] != "root":
-                i += 1
-                active = self.G.nodes[active[0]]["active"]
-            reply = record["original_reply"]
-            logprobs = [token["logprob"] for token in reply.response_metadata["logprobs"]["content"]]
-            perplexity_score = np.exp(-np.mean(logprobs))
-        limit = 1.2 + i*0.1
-        if perplexity_score < limit:
-            return True
-        else:
-            return False
-
-    def choose_policy(self, list):
-        '''选择一个方案
-            输入：一个包含各种策略的列表
-            输出：给定的某个策略'''
-        pass
 
     def deal_node_generation(self, regeneration, subtype, node, record, index_list, kwargs, confidence, active=None, color="normal"):
         if active is None:
@@ -491,38 +480,6 @@ class RTMAgent:
             cur_index = self.draw_graph(f"{count}{subtype.lower()}", node_info, active, color)
         return cur_index
 
-    def confidence_redirect(self, confidence, index, state, center_index=None):
-        if not center_index:
-            center_index = self.G.nodes[index]["active"][0]
-        if confidence:
-            candidate = [center_index]
-            for node in self.G.nodes():
-                if (index in self.G.nodes[node]["active"]):
-                    self.G.nodes[node]["active"].append(center_index)
-                    candidate.append(node)
-            if len(candidate) >2:
-                #是否应继承上文
-                self.policy_importance("UNIMPORTANT_POINT", candidate, {})
-            return state
-            #不确定则转其他信息获取，并在获取完成后重复循环
-        else:
-            #深度优先原则,也有可能confidence是None
-            if self.G.nodes[center_index]["confidence"]:
-                next_type, next_task, next_task_kwargs = self.not_sure_method(index)
-                next_task_kwargs["regeneration"] = False
-                state = next_type, next_task, [index], next_task_kwargs
-                return state
-            else:
-                return self.back_to_top(center_index)
-
-    def back_to_top(self, index):
-        subtype = self.G.nodes[index]["subtype"]
-        type = self.gain_type(subtype)
-        back_dict = self.G.nodes[index]["kwargs"]
-        back_dict["regeneration"] = True
-        state = type, subtype, [index], back_dict
-        return state
-
     def regenerate_node(self, index, record, node, kwargs):
         judgment = self.policy_compare("DIFFERENCE_ANSWER", [index], kwargs)
         #防止字符串抽风 eg. “answer1better"
@@ -537,116 +494,14 @@ class RTMAgent:
             self.G.nodes[index]['record'] = record
             self.G.nodes[index]['content'] = node
 
-    def not_sure_method(self, index, node=None):
-        decompose = ["DECOMPOSE_TASK"]
-        association = ["ASSOCIATION", "SIMILAR_PROBLEM"]
-        compare = ["COMPARE", "COMPARE_ORDINARY"]
-        importance = ["IMPORTANCE"]
-        inference = ["REASON", "DEFINE", "RESULT", "COUNTER_FACTUAL1", "COUNTER_FACTUAL2"]
-        seq = [decompose, association, compare, importance, inference]
-
-
-        for node in self.G.nodes():
-            node_dict = self.G.nodes[node]
-            for subtype_list in seq:
-                if (node_dict["active"] == index) & (node_dict["subtype"] in subtype_list):
-                    subtype_list.remove(node_dict["subtype"])
-
-        thing_list = []
-        for node in self.G.neighbors(index):
-            if self.G.nodes[node]["subtype"] == "ASSOCIATION" or False:
-                for key, value in self.G.nodes[node]["content"].items():
-                    thing_list.append(value)
-        if len(thing_list) < 1:
-            seq[4].remove("COUNTER_FACTUAL1")
-            seq[4].remove("COUNTER_FACTUAL2")
-        if len(thing_list) < 2:
-            seq[2].remove("COMPARE")            
-
-        choice_number = randrange(len(seq))
-        candidate = choice(seq[choice_number])
-        if candidate == "DECOMPOSE_TASK":
-            return "decompose", "DECOMPOSE_TASK", {"problem": self.G.nodes[index]["content"], "regeneration": False}
-        elif candidate == "ASSOCIATION":
-            return "association", "ASSOCIATION", {"item": self.G.nodes[index]["content"]}
-        elif candidate == "SIMILAR_PROBLEM":
-            return "association", "SIMILAR_PROBLEM",  {"problem": self.G.nodes[index]["content"], "regeneration": False}
-        elif candidate == "COMPARE":
-            # TODO: 如果thing不够也可以考虑主动调用生成
-            nodes = self.G.neighbors(index)
-            thing1 = choice(thing_list)
-            thing_list.remove(thing1)
-            thing2 = choice(thing_list)
-            return "compare", "COMPARE", {"thing1": thing1, "thing2": thing2, "regeneration": False}
-        elif candidate == "COMPARE_ORDINARY":
-            return "compare", "COMPARE_ORDINARY", {"problem": self.G.nodes[index]["content"], "regeneration": False}
-        elif candidate == "IMPORTANCE":
-            return "importance", "IMPORTANCE", {"problem": self.G.nodes[index]["content"], "regeneration": False}
-        elif candidate in ["REASON", "DEFINE", "RESULT"]:
-            return "inference", candidate, {"thing": self.G.nodes[index]["content"], "regeneration": False}
-        elif candidate in ["COUNTER_FACTUAL1", "COUNTER_FACTUAL2"]:
-            #需要有一个thing
-            thing = choice(thing_list)
-            return "inference", candidate, {"thing": thing, "result": self.G.nodes[index]["record"]["reply"], "regeneration": False}
-
-    def extract_information(self, record, objects, descriptions, model=None):
-        schemas = []
-        for item, description in zip(objects, descriptions):
-            schemas.append(ResponseSchema(name=item, description=description))
-        output_parser = StructuredOutputParser.from_response_schemas(schemas)
-        format_instructions = output_parser.get_format_instructions()
-        extract_format = """Next, a segment of Q&A text will be provided. Please extract information according to the following format.
-        
-        chatting records = {text}
-
-        {format_instructions}
-        """
-        prompt = ChatPromptTemplate.from_messages([extract_format])
-
-        text = f"ask:{record['ask']} \n reply:{record['reply']}"
-        messages = prompt.invoke({"text": text, "format_instructions": format_instructions})
-        response = self.chat.invoke(messages)
-        try:
-            output_dict = output_parser.parse(response.content)
-        except Exception as e:
-            new_parser = OutputFixingParser.from_llm(parser=output_parser, llm=self.chat)
-            output_dict = new_parser.parse(response.content)
-
-        #输出的是一个字典
-        return output_dict
-
-    def gain_type(self, subtype):
-        overall = ["ANSWER", "TASK_RECOGNITION", "TASK_DIFFICULTY"]
-        decompose = ["DECOMPOSE_TASK", "STEP"]
-        association = ["ASSOCIATION", "SIMILAR_PROBLEM"]
-        compare = ["COMPARE", "COMPARE_ORDINARY", "DIFFERENCE_IMPACT", "DIFFERENCE_ANSWER", "CHOOSE_ANSWER"]
-        importance = ["IMPORTANCE", "CONDENSE_TEXT", "UNIMPORTANT_POINT"]
-        inference = ["REASON", "DEFINE", "RESULT", "COUNTER_FACTUAL1", "COUNTER_FACTUAL2"]
-        if subtype in overall:
-            return "overall"
-        elif subtype in decompose:
-            return "decompose"
-        elif subtype in association:
-            return "association"
-        elif subtype in compare:
-            return "compare"
-        elif subtype in importance:
-            return "importance"
-        elif subtype in inference:
-            return "inference"
-
     def count_node(self, name):
         count = sum(name in node for node in self.G.nodes())
         return count
 
-    def gain_record(self, subtype, index, kwargs):
-        regeneration = False
-        if "regeneration" in kwargs:
-            regeneration = kwargs["regeneration"]
-            del kwargs["regeneration"]
-        if regeneration:
+    def gain_record(self, subtype, index, kwargs, regen):
+        if regen:
             kwargs["index"] = index
-        record = self.send_and_record(subtype, regeneration, **kwargs)
+        record = self.send_and_record(subtype, regen, **kwargs)
         return record
 
     def send_and_record(self, subtype, regeneration=False, **kwargs):
@@ -710,14 +565,9 @@ class RTMAgent:
             self.G.add_edge(index, name, label=edge)
         return name
 
-    def save_chat(self):
-        path = os.path.join(self.output, "test_txt.txt")
-        with open(path, "w") as f:
-            for msg, i in enumerate(self.MSG):
-                if i % 2 == 0:
-                    f.write("Human" + msg + "\n")
-                else:
-                    f.write("AI" + msg + "\n")
-        return
+
+
+
+
 
 
